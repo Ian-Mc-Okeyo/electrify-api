@@ -54,7 +54,7 @@ class DataToday(APIView):
         print("Today is: ", today)
 
 
-        userProfile = UserProfile.objects.filter(user__username = 'ian9@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
 
         #create todays data
         # today_new = UserData(day = today, user = userProfile)
@@ -79,7 +79,7 @@ class DataToday(APIView):
 
         current_hour = datetime.datetime.today().hour
 
-        userProfile = UserProfile.objects.filter(user__username = 'ian9@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
         # userDayData = UserData(day = before_yesterday, user = userProfile)
         # userDayData.save()
 
@@ -137,7 +137,7 @@ class WeeksData(APIView):
         today = date.today()
         current_hour = datetime.datetime.today().hour
 
-        userProfile = UserProfile.objects.filter(user__username = 'ian9@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
         #get last week saturady 24 hour
         #if it's saturday
         week_day = today.isocalendar().weekday
@@ -153,7 +153,7 @@ class WeeksData(APIView):
         print('last day week 2:', last_day_two_week)
 
         #get the data
-        userProfile = UserProfile.objects.filter(user__username = 'ian9@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
         count = 1
         this_week_data = []
 
@@ -193,14 +193,22 @@ class MonthlyData(APIView):
         now = datetime.datetime.now()
         current_hour = now.hour
         current_month = now.month
-        userProfile = UserProfile.objects.filter(user__username = 'ian9@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
         print(current_hour)
-        months = [31,28,31,30,31,30,31,31,30,31,30,31]
-        months_data = []
-        for i in range(current_month):
-            current_month_last_day = date(now.year, i+1, months[i])
 
-            last_month_last_day = date(now.year, i, months[i-1])
+        if now.year % 4 == 0:
+            feb = 29
+        else:
+            feb = 28
+        months = [31,feb,31,30,31,30,31,31,30,31,30,31]
+        months_data = []
+        for i in range(1, current_month+1):
+            current_month_last_day = date(now.year, i, months[i-1])
+
+            if i == 1:
+                last_month_last_day = date(now.year, i, months[i])
+            else:
+                last_month_last_day = date(now.year, i-1, months[i-2])
 
             if i == 1:
                 first_day_jan = date(now.year, 1, 1) #to be changed to read dec 31 hour 24
@@ -209,7 +217,7 @@ class MonthlyData(APIView):
                  last_reading_last_month = UserData.objects.filter(day=last_month_last_day, user = userProfile).first().hour_24
             
             if i+1 == current_month:
-                last_reading_current_month = UserData.objects.filter(day=today, user = userProfile).first().__dict__['hour_'+current_hour]
+                last_reading_current_month = UserData.objects.filter(day=today, user = userProfile).first().__dict__['hour_'+str(current_hour)]
             else:
                 last_reading_current_month = UserData.objects.filter(day=current_month_last_day, user = userProfile).first().hour_24
            
@@ -217,30 +225,73 @@ class MonthlyData(APIView):
             amount_spent = last_reading_current_month - last_reading_last_month
 
             months_data.append(amount_spent)
+        
+        #expenditure between last month and this month
+        if current_month == 1:
+            last_month_expenditure = 0
+        else:
+            last_month_last_day = date(today.year, current_month-1, months[current_month-2])
+            last_2_months_last_day = date(today.year, current_month-2, 1)
+            reading_last_day_of_1_month_ago = UserData.objects.filter(day=last_month_last_day, user = userProfile).first().hour_24
+            reading_last_day_of_2_months_ago = UserData.objects.filter(day=last_2_months_last_day, user = userProfile).first().hour_24
 
-        return Response()
+            last_month_expenditure = reading_last_day_of_1_month_ago - reading_last_day_of_2_months_ago
+
+        data = {
+            'month_data': months_data,
+            'last_month_expenditure': last_month_expenditure,
+            'this_month_expenditure': months_data[-1]
+        }
+
+        return Response({'data': data})
 
 
 class Test(APIView):
     def get(self, request, *args, **kwargs):
-        userProfile = UserProfile.objects.filter(user__username = 'ian9@gmail.com').first()
-        today = date.today()
-        current_value = 0
-        data = {}
-        for i in range(21, -1, -1):
-            current_day = today - timedelta(days=i)
-            userDayData = UserData.objects.filter(day = current_day, user = userProfile).first()
-            # userDayData.save()            
-            
-            # for j in range(1, 25):
-            #     print(current_value)
-            #     add = round(random.uniform(0, 0.3), 2)
-            #     current_value += add
-            #     print(current_value)
-            #     userDayData.__dict__['hour_'+str(j)] = current_value
-            #     userDayData.save()
-            
-            current_day_data = DayDataSerializer(UserData.objects.filter(user = userProfile, day = current_day).first()).data
-            data[i] = current_day_data
+        #delete all the days
+        # all_data = User.objects.all()
+        # for data in all_data:
+        #     data.delete()
+
         
-        return Response({'Msg': data}, status=200)
+        # new_user = User(username='ian10@gmail.com', email='ian10@gmail.com')
+        # new_user.set_password('12345678')
+        # new_user.save()
+        # userProfile = UserProfile(user = new_user, firstName = 'Ian', lastName = 'Mark', meterNumber = '123456789', phoneNumber = '0796417598')
+        # userProfile.save()
+
+        #userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
+        
+        # today = date.today()
+        # current_value = 0
+        # data = {}
+        # for i in range(21, -1, -1):
+        #     current_day = today - timedelta(days=i)
+        #     userDayData = UserData.objects.filter(day = current_day, user = userProfile).first()
+        #     # userDayData.save()            
+            
+        #     # for j in range(1, 25):
+        #     #     print(current_value)
+        #     #     add = round(random.uniform(0, 0.3), 2)
+        #     #     current_value += add
+        #     #     print(current_value)
+        #     #     userDayData.__dict__['hour_'+str(j)] = current_value
+        #     #     userDayData.save()
+            
+        #     current_day_data = DayDataSerializer(UserData.objects.filter(user = userProfile, day = current_day).first()).data
+        #     data[i] = current_day_data
+
+        #create dummy data for the whole of this year
+        # first_day_of_the_year = date(2023, 1, 1)
+        # current_reading = 20
+        # for i in range(365):
+        #     current_day = first_day_of_the_year + timedelta(days=i)
+        #     new_data = UserData(day = current_day, user = userProfile)
+        #     for k in range(1, 25):
+        #         print(current_reading)
+        #         new_data.__dict__['hour_'+str(k)] = current_reading
+        #         add = round(random.uniform(0, 0.3), 2)
+        #         current_reading += add
+        #         new_data.save()
+        
+        return Response({'Msg': 'success'}, status=200)

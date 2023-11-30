@@ -10,7 +10,7 @@ class UserProfile(models.Model):
     phoneNumber = models.CharField(max_length=200, null=False, blank=False)
 
 class UserData(models.Model):
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    user = models.ForeignKey(UserProfile, on_delete=models.PROTECT)
     lastUpdate = models.DateTimeField(default=timezone.now)
     day = models.DateField()
     hour_1 = models.DecimalField(max_digits=10, default=0.0, decimal_places=3)

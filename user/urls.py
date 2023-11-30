@@ -7,5 +7,6 @@ urlpatterns = [
     path("day-data", DataToday.as_view(), name='daily-data'),
     path("test", Test.as_view(), name='test'),
     path("weeks-data", WeeksData.as_view(), name='weeks-data'),
+    path("month-data", MonthlyData.as_view(), name='month-data'),
     path("receive-data", ReceiveData.as_view(), name='receive-data')
 ]
