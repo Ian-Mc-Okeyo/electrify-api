@@ -6,11 +6,18 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     firstName = models.CharField(max_length=200, null=False, blank=False)
     lastName = models.CharField(max_length=200, null=False, blank=False)
-    meterNumber = models.CharField(max_length=200, null=False, blank=False)
     phoneNumber = models.CharField(max_length=200, null=False, blank=False)
 
-class UserData(models.Model):
+class UserMeterNumber(models.Model):
+    meterNumber = models.CharField(max_length=200)
     user = models.ForeignKey(UserProfile, on_delete=models.PROTECT)
+    initialReading = models.DecimalField(max_digits=10, default=0.0, decimal_places=4, null=False, blank=False)
+    flag = models.IntegerField(null=False, blank=False, default=1)
+    start = models.DateTimeField(default=timezone.now)
+    end = models.DateTimeField(blank=True, null=True)
+
+class MeterData(models.Model):
+    meter = models.ForeignKey(UserMeterNumber, on_delete=models.PROTECT, null=True)
     lastUpdate = models.DateTimeField(default=timezone.now)
     day = models.DateField()
     hour_1 = models.DecimalField(max_digits=10, default=0.0, decimal_places=3)

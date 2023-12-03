@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
-from .serializers import UserRegisterSerializer, ProfileCreateSerializer, UserDetailsSerilizer, DayDataSerializer
+from .serializers import UserRegisterSerializer, ProfileCreateSerializer, UserDetailsSerilizer, DayDataSerializer, MeterCreateSerializer
 from rest_framework.response import Response
 from knox.models import AuthToken
 from django.contrib.auth import authenticate
@@ -25,13 +25,25 @@ class RegisterView(APIView):
             profileSerializer = ProfileCreateSerializer(data = request.data['profile'])
             if profileSerializer.is_valid():
                 newProfile = profileSerializer.save()
+                print
 
-                responseData = {
-                    "token": AuthToken.objects.create(user)[1],
-                    "user":UserDetailsSerilizer(user).data
-                }
+                request.data['meter']['user'] = newProfile.id
 
-                return Response(responseData, status=201)
+                meterSerializer = MeterCreateSerializer(data = request.data['meter'])
+                
+                if meterSerializer.is_valid():
+                    meterSerializer.save()
+
+                    responseData = {
+                        "token": AuthToken.objects.create(user)[1],
+                        "user":UserDetailsSerilizer(user).data
+                    }
+                
+                    return Response(responseData, status=201)
+            
+
+                return Response(meterSerializer.errors, status=400)
+            
             return Response(profileSerializer.errors, status=400)
         return Response(userSerializer.errors, status=400)
 
@@ -39,27 +51,30 @@ class LoginView(APIView):
     def post(self, request, *args, **kwargs):
         user = authenticate(username = request.data['email'], password = request.data['password'])
         if user is not None:
+            profile = UserProfile.objects.filter(user = user).first()
+            mtrNumber = UserMeterNumber.objects.filter(user=profile, flag=1).first()
             responseData = {
                 "token": AuthToken.objects.create(user)[1],
-                "user":UserDetailsSerilizer(user).data
+                "user":UserDetailsSerilizer(user).data,
+                'mtrNumber': mtrNumber.meterNumber,
             }
             return Response(responseData, status=200)
         return Response({'Msg': 'Invlid Details'}, status=401)
 
 
 class DataToday(APIView):
-    def get(self, request, *args, **kwargs):
+    def get(self, request, userEmail, meterNumber, *args, **kwargs):
         today = date.today()
         print(today.weekday)
         print("Today is: ", today)
 
 
-        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = userEmail).first()
 
         #create todays data
-        # today_new = UserData(day = today, user = userProfile)
+        # today_new = MeterData(day = today, user = userProfile)
         # today_new.save()
-        # userTodayData = UserData.objects.filter(day = today, user = userProfile).first()
+        # userTodayData = MeterData.objects.filter(day = today, user = userProfile).first()
         # current_value = 79.950
         # for j in range(1, 25):
         #     print(current_value)
@@ -77,17 +92,17 @@ class DataToday(APIView):
 
         print("Yesterday was: ", yesterday)
 
-        current_hour = datetime.datetime.today().hour
+        current_hour = datetime.datetime.now().hour
 
-        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
-        # userDayData = UserData(day = before_yesterday, user = userProfile)
+        userProfile = UserProfile.objects.filter(user__username = userEmail).first()
+        # userDayData = MeterData(day = before_yesterday, user = userProfile)
         # userDayData.save()
 
         #regenerate 2 days ago data.
         # day_before_2_days_ago = before_yesterday - timedelta(days = 1)
-        # day_before_2_days_ago_reading = UserData.objects.filter(user = userProfile, day = day_before_2_days_ago).first().hour_24
+        # day_before_2_days_ago_reading = MeterData.objects.filter(user = userProfile, day = day_before_2_days_ago).first().hour_24
         
-        # before_yesterday_data = UserData.objects.filter(day = before_yesterday, user = userProfile).first()
+        # before_yesterday_data = MeterData.objects.filter(day = before_yesterday, user = userProfile).first()
         # current_value = float(day_before_2_days_ago_reading)
         # for j in range(1, 25):
         #     print(current_value)
@@ -96,21 +111,21 @@ class DataToday(APIView):
         #     print(current_value)
         #     before_yesterday_data.__dict__['hour_'+str(j)] = current_value
         # before_yesterday_data.save()
-
-        yesterday_reading = UserData.objects.filter(user = userProfile, day = yesterday).first().hour_24
-        before_yesterday_reading = UserData.objects.filter(user = userProfile, day = before_yesterday).first().hour_24
-        today_reading = UserData.objects.filter(user = userProfile, day = today).first()
+        meter = UserMeterNumber.objects.filter(user = userProfile, meterNumber=meterNumber).first()
+        yesterday_reading = MeterData.objects.filter(meter=meter, day = yesterday).first().hour_24
+        before_yesterday_reading = MeterData.objects.filter(meter=meter, day = before_yesterday).first().hour_24
+        today_reading = MeterData.objects.filter(meter=meter, day = today).first()
 
         print(today_reading)
         print(yesterday_reading)
 
         today_data = []
-        for i in range(1, 25):
+        for i in range(1, current_hour+1):
             if i == 1:
-                today_data.append(float(today_reading.__dict__['hour_'+str(i)]) - float(yesterday_reading))
+                today_data.append(round(float(today_reading.__dict__['hour_'+str(i)]) - float(yesterday_reading), 2))
             else:
 
-                today_data.append(float(today_reading.__dict__['hour_'+str(i)]) - float(today_reading.__dict__['hour_'+str(i-1)]))
+                today_data.append(round(float(today_reading.__dict__['hour_'+str(i)]) - float(today_reading.__dict__['hour_'+str(i-1)]), 2))
         
         print(today_data)
 
@@ -126,18 +141,53 @@ class DataToday(APIView):
 class ReceiveData(APIView):
     def post(self, request, *args, **kwargs):
         print(request.data)
+        meterNumber = request.data['mtrNo']
+        meter = UserMeterNumber.objects.filter(meterNumber = meterNumber, flag=1).first()
+        if meter is None:
+            return Response({'Msg': 'Meter Not Found'}, status=404)
+        timeNow = datetime.datetime.now()
+        current_hour = timeNow.hour
+        mtr_data = MeterData.objects.filter(meter=meter, day = date.today()).first()
+
+        if mtr_data.__dict__[f'hour_{current_hour}'] != 0:
+            mtr_data.__dict__[f'hour_{current_hour}'] = float(mtr_data.__dict__[f'hour_{current_hour}']) + 0.01
+        else:
+            lastUpdate = mtr_data.lastUpdate
+            for i in range(lastUpdate.hour + 1, timeNow.hour+1):
+                mtr_data.__dict__[f'hour_{i}'] = mtr_data.__dict__[f'hour_ {lastUpdate.hour}']
+            
+            mtr_data.__dict__[f'hour_{timeNow.hour}'] =  float(mtr_data.__dict__[f'hour_{timeNow.hour}']) + 0.01
+        mtr_data.save()
+
+        #connect to the websocket
+
         return Response({'Msg': 'Success'}, status=201)
-    def get(self, request, *args, **kwargs):
-        print(request.data)
-        return Response({'Msg':'success'}, status=200)
-    
+    # def get(self, request, *args, **kwargs):
+    #     print(request.data)
+    #     return Response({'Msg':'success'}, status=200)
+
+class DashboardView(APIView):
+    def get(self, request, meterNumber, userEmail, *args, **kwargs):
+        user = UserProfile.objects.filter(user__username = userEmail).first()
+        meter = UserMeterNumber.objects.filter(meterNumber=meterNumber, user=user).first()
+        meterReadings = MeterData.objects.filter(meter = meter, day=date.today()).first()
+        hour  = datetime.datetime.now().hour
+        
+        data = {
+            'currentReading': meterReadings.__dict__[f'hour_{hour}'],
+            # 'user': user.user.username,
+            # 'meter': meter.meterNumber,
+            # 'hour': hour,
+        }
+
+        return Response({'data': data}, status=200)
 class WeeksData(APIView):
-    def get(self, request, *args, **kwargs):
+    def get(self, request, userEmail, meterNumber, *args, **kwargs):
         #get current hour reading
         today = date.today()
         current_hour = datetime.datetime.today().hour
 
-        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = userEmail).first()
         #get last week saturady 24 hour
         #if it's saturday
         week_day = today.isocalendar().weekday
@@ -153,7 +203,8 @@ class WeeksData(APIView):
         print('last day week 2:', last_day_two_week)
 
         #get the data
-        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = userEmail).first()
+        meter = UserMeterNumber.objects.filter(user = userProfile, meterNumber=meterNumber).first()
         count = 1
         this_week_data = []
 
@@ -161,22 +212,22 @@ class WeeksData(APIView):
             current_day = last_day_last_week + timedelta(days = count)
             previous_day = current_day - timedelta(days = 1)
 
-            previous_day_reading = UserData.objects.filter(user = userProfile, day = previous_day).first().hour_24
+            previous_day_reading = MeterData.objects.filter(meter=meter, day = previous_day).first().hour_24
 
             if count == day_difference:
                 current_hour = datetime.datetime.today().hour
-                current_day_reading = UserData.objects.filter(user = userProfile, day = current_day).first().__dict__['hour_'+str(current_hour)]
+                current_day_reading = MeterData.objects.filter(meter=meter, day = current_day).first().__dict__['hour_'+str(current_hour)]
             else:
-                 current_day_reading = UserData.objects.filter(user = userProfile, day = current_day).first().hour_24
+                 current_day_reading = MeterData.objects.filter(meter=meter, day = current_day).first().hour_24
             
             this_week_data.append(current_day_reading - previous_day_reading)
             count += 1
         
         #differences
-        last_week_reading = UserData.objects.filter(user = userProfile, day = last_day_last_week).first().hour_24
+        last_week_reading = MeterData.objects.filter(meter=meter, day = last_day_last_week).first().hour_24
         print('last week reading', last_week_reading)
         amount_this_week = current_day_reading - last_week_reading
-        amount_last_week = last_week_reading - UserData.objects.filter(user = userProfile, day = last_day_two_week).first().hour_24
+        amount_last_week = last_week_reading - MeterData.objects.filter(meter=meter, day = last_day_two_week).first().hour_24
 
 
         data = {
@@ -188,12 +239,13 @@ class WeeksData(APIView):
         return Response({'data': data}, status=200)
 
 class MonthlyData(APIView):
-    def get(self, request, *args, **kwargs):
+    def get(self, request, userEmail, meterNumber, *args, **kwargs):
         today = date.today()
         now = datetime.datetime.now()
         current_hour = now.hour
         current_month = now.month
-        userProfile = UserProfile.objects.filter(user__username = 'ian10@gmail.com').first()
+        userProfile = UserProfile.objects.filter(user__username = userEmail).first()
+        meter = UserMeterNumber.objects.filter(user=userProfile, meterNumber=meterNumber).first()
         print(current_hour)
 
         if now.year % 4 == 0:
@@ -212,14 +264,14 @@ class MonthlyData(APIView):
 
             if i == 1:
                 first_day_jan = date(now.year, 1, 1) #to be changed to read dec 31 hour 24
-                last_reading_last_month = UserData.objects.filter(day=first_day_jan, user = userProfile).first().hour_1
+                last_reading_last_month = MeterData.objects.filter(day=first_day_jan, meter=meter).first().hour_1
             else:
-                 last_reading_last_month = UserData.objects.filter(day=last_month_last_day, user = userProfile).first().hour_24
+                 last_reading_last_month = MeterData.objects.filter(day=last_month_last_day, meter=meter).first().hour_24
             
             if i+1 == current_month:
-                last_reading_current_month = UserData.objects.filter(day=today, user = userProfile).first().__dict__['hour_'+str(current_hour)]
+                last_reading_current_month = MeterData.objects.filter(day=today, meter=meter).first().__dict__['hour_'+str(current_hour)]
             else:
-                last_reading_current_month = UserData.objects.filter(day=current_month_last_day, user = userProfile).first().hour_24
+                last_reading_current_month = MeterData.objects.filter(day=current_month_last_day, meter=meter).first().hour_24
            
 
             amount_spent = last_reading_current_month - last_reading_last_month
@@ -232,8 +284,8 @@ class MonthlyData(APIView):
         else:
             last_month_last_day = date(today.year, current_month-1, months[current_month-2])
             last_2_months_last_day = date(today.year, current_month-2, 1)
-            reading_last_day_of_1_month_ago = UserData.objects.filter(day=last_month_last_day, user = userProfile).first().hour_24
-            reading_last_day_of_2_months_ago = UserData.objects.filter(day=last_2_months_last_day, user = userProfile).first().hour_24
+            reading_last_day_of_1_month_ago = MeterData.objects.filter(day=last_month_last_day, meter=meter).first().hour_24
+            reading_last_day_of_2_months_ago = MeterData.objects.filter(day=last_2_months_last_day, meter=meter).first().hour_24
 
             last_month_expenditure = reading_last_day_of_1_month_ago - reading_last_day_of_2_months_ago
 
@@ -267,7 +319,7 @@ class Test(APIView):
         # data = {}
         # for i in range(21, -1, -1):
         #     current_day = today - timedelta(days=i)
-        #     userDayData = UserData.objects.filter(day = current_day, user = userProfile).first()
+        #     userDayData = MeterData.objects.filter(day = current_day, user = userProfile).first()
         #     # userDayData.save()            
             
         #     # for j in range(1, 25):
@@ -278,20 +330,22 @@ class Test(APIView):
         #     #     userDayData.__dict__['hour_'+str(j)] = current_value
         #     #     userDayData.save()
             
-        #     current_day_data = DayDataSerializer(UserData.objects.filter(user = userProfile, day = current_day).first()).data
+        #     current_day_data = DayDataSerializer(MeterData.objects.filter(user = userProfile, day = current_day).first()).data
         #     data[i] = current_day_data
 
-        #create dummy data for the whole of this year
-        # first_day_of_the_year = date(2023, 1, 1)
-        # current_reading = 20
-        # for i in range(365):
-        #     current_day = first_day_of_the_year + timedelta(days=i)
-        #     new_data = UserData(day = current_day, user = userProfile)
-        #     for k in range(1, 25):
-        #         print(current_reading)
-        #         new_data.__dict__['hour_'+str(k)] = current_reading
-        #         add = round(random.uniform(0, 0.3), 2)
-        #         current_reading += add
-        #         new_data.save()
+        # create dummy data for the whole of this year
+        first_day_of_the_year = date(2023, 1, 1)
+        current_reading = 20
+        for i in range(365):
+            current_day = first_day_of_the_year + timedelta(days=i)
+            mtrNumber = '1234567891'
+            mtr = UserMeterNumber.objects.filter(meterNumber=mtrNumber).first()
+            new_data = MeterData(day = current_day, meter=mtr)
+            for k in range(1, 25):
+                print(current_reading)
+                new_data.__dict__['hour_'+str(k)] = current_reading
+                add = round(random.uniform(0, 0.3), 2)
+                current_reading += add
+                new_data.save()
         
         return Response({'Msg': 'success'}, status=200)
